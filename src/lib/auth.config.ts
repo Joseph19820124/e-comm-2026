@@ -39,10 +39,20 @@ export const authConfig: NextAuthConfig = {
         return auth?.user?.role === "ADMIN";
       }
 
+      // Shop protected routes
+      if (pathname.startsWith("/account") || pathname === "/checkout") {
+        if (!auth?.user) {
+          const loginUrl = new URL("/login", request.url);
+          loginUrl.searchParams.set("callbackUrl", pathname);
+          return Response.redirect(loginUrl);
+        }
+        return true;
+      }
+
       return true;
     },
   },
   pages: {
-    signIn: "/admin/login",
+    signIn: "/login",
   },
 };

@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { compare } from "bcryptjs";
 import { prisma } from "./prisma";
 import { authConfig } from "./auth.config";
 
@@ -24,8 +25,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        // Simple password comparison (in production, use bcrypt)
-        if (user.password !== credentials.password) {
+        // Check if password is hashed (bcrypt hashes start with $2)
+        const isHashed = user.password.startsWith("$2");
+        let isValid = false;
+
+        if (isHashed) {
+          isValid = await compare(credentials.password as string, user.password);
+        } else {
+          // Fallback for legacy plain text passwords
+          isValid = user.password === credentials.password;
+        }
+
+        if (!isValid) {
           return null;
         }
 
