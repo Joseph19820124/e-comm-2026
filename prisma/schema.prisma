@@ -1,0 +1,237 @@
+// Prisma schema for E-Commerce MVP
+// Database: PostgreSQL (Neon)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== Auth (NextAuth.js) ====================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // For credentials auth
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  addresses Address[]
+  orders    Order[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+// ==================== Address ====================
+
+model Address {
+  id           String  @id @default(cuid())
+  userId       String
+  name         String  // Recipient name
+  phone        String
+  province     String
+  city         String
+  district     String
+  street       String
+  postalCode   String?
+  isDefault    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+// ==================== Product ====================
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  image       String?
+  parentId    String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryToCategory")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String? @db.Text
+  price       Decimal @db.Decimal(10, 2)
+  comparePrice Decimal? @db.Decimal(10, 2) // Original price for discount display
+  cost        Decimal? @db.Decimal(10, 2)  // Cost price
+  sku         String?  @unique
+  barcode     String?
+
+  stock       Int     @default(0)
+  lowStock    Int     @default(10)  // Low stock alert threshold
+
+  images      String[] // Array of image URLs
+  thumbnail   String?
+
+  weight      Decimal? @db.Decimal(10, 2) // In grams
+
+  categoryId  String?
+
+  isActive    Boolean @default(true)
+  isFeatured  Boolean @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category   Category?   @relation(fields: [categoryId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([isActive, isFeatured])
+  @@map("products")
+}
+
+// ==================== Order ====================
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique // e.g., ORD-20240101-XXXX
+  userId      String
+  addressId   String?
+
+  // Snapshot of shipping address (in case address is deleted)
+  shippingName     String
+  shippingPhone    String
+  shippingAddress  String
+
+  subtotal    Decimal @db.Decimal(10, 2)
+  shipping    Decimal @db.Decimal(10, 2) @default(0)
+  tax         Decimal @db.Decimal(10, 2) @default(0)
+  discount    Decimal @db.Decimal(10, 2) @default(0)
+  total       Decimal @db.Decimal(10, 2)
+
+  status      OrderStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
+
+  note        String?
+
+  paidAt      DateTime?
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  cancelledAt DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User        @relation(fields: [userId], references: [id])
+  address Address?    @relation(fields: [addressId], references: [id])
+  items   OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  productId String
+
+  // Snapshot of product info at time of order
+  productName  String
+  productImage String?
+  productSku   String?
+
+  price     Decimal @db.Decimal(10, 2)
+  quantity  Int
+  subtotal  Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+enum OrderStatus {
+  PENDING     // Waiting for payment
+  PAID        // Payment received
+  PROCESSING  // Order being prepared
+  SHIPPED     // Order shipped
+  DELIVERED   // Order delivered
+  CANCELLED   // Order cancelled
+  REFUNDED    // Order refunded
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+  FAILED
+}
